@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctime>
 #include <ctype.h>
+#include <vector>
 
 #define _USE_MATH_DEFINES
 #include <math.h>
@@ -39,11 +41,11 @@
 //		6. The transformations to be reset
 //		7. The program to quit
 //
-//	Author:			Joe Graphics
+//	Author:			Samantha Egge
 
 // title of these windows:
 
-const char *WINDOWTITLE = "OpenGL / GLUT Sample -- Joe Graphics";
+const char *WINDOWTITLE = "OpenGL / GLUT Final Project -- Samantha Egge";
 const char *GLUITITLE   = "User Interface Window";
 
 // what the glui package defines as true and false:
@@ -57,7 +59,7 @@ const int ESCAPE = 0x1b;
 
 // initial window size:
 
-const int INIT_WINDOW_SIZE = 600;
+const int INIT_WINDOW_SIZE = 900;
 
 // size of the 3d box to be drawn:
 
@@ -163,7 +165,7 @@ const float	WHITE[ ] = { 1.,1.,1.,1. };
 
 // for animation:
 
-const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
+const int MS_PER_CYCLE = 40000;		// 10000 milliseconds = 10 seconds
 
 
 // what options should we compile-in?
@@ -178,7 +180,11 @@ const int MS_PER_CYCLE = 10000;		// 10000 milliseconds = 10 seconds
 int		ActiveButton;			// current button that is down
 GLuint	AxesList;				// list to hold the axes
 int		AxesOn;					// != 0 means to draw the axes
-GLuint	BoxList;				// object display list
+GLuint	SphereDL;				// object display list
+GLuint  GridDL;
+GLuint  PineTreeDL;
+GLuint  CampFireDL;
+GLuint  TentDL;
 int		DebugOn;				// != 0 means to print debugging info
 int		DepthCueOn;				// != 0 means to use intensity depth cueing
 int		DepthBufferOn;			// != 0 means to use the z-buffer
@@ -191,6 +197,18 @@ int		ShadowsOn;				// != 0 means to turn shadows on
 float	Time;					// used for animation, this has a value between 0. and 1.
 int		Xmouse, Ymouse;			// mouse values
 float	Xrot, Yrot;				// rotation angles in degrees
+bool    textureTesting;
+bool    Frozen;
+bool    ViewToggle;
+
+//handle wasd key movement
+float eyeD = 0.1f;
+float eyeX = 0.f;
+float eyeY = 2.f;
+float eyeZ = -6.f;
+
+// global grass variables
+int UNUMXZ = 1000;
 
 
 // function prototypes:
@@ -270,22 +288,272 @@ MulArray3(float factor, float a, float b, float c )
 
 // these are here for when you need them -- just uncomment the ones you need:
 
-//#include "setmaterial.cpp"
-//#include "setlight.cpp"
-//#include "osusphere.cpp"
+#include "setmaterial.cpp"
+#include "setlight.cpp"
+#include "osusphere.cpp"
 //#include "osucone.cpp"
 //#include "osutorus.cpp"
-//#include "bmptotexture.cpp"
-//#include "loadobjfile.cpp"
-//#include "keytime.cpp"
-//#include "glslprogram.cpp"
+#include "bmptotexture.cpp"
+#include "loadobjfile.cpp"
+#include "keytime.cpp"
+#include "glslprogram.cpp"
+//#include "vertexbufferobject.cpp"
 
+
+enum TextureIDNames
+{
+	MOON,
+	DIRT,
+	PINETREE,
+	CAMPFIRE,
+	TENT
+};
+
+char* TextureFiles[] =
+{
+	(char*)"moon.bmp",
+	(char*)"dirtTexture.bmp",
+	(char*)"pineTreeTex.bmp",
+	(char*)"campFireTexture.bmp",
+	(char*)"tentTex.bmp"
+};
+
+int	   NumTextureIDs = 5;
+GLuint TextureIDs[5];
+
+
+unsigned char* Texture;
+GLuint		   DaySkyTex;
+GLuint		   NightSkyTex;
+GLSLProgram	   Pattern;
+GLSLProgram	   Grass;
+GLSLProgram    FirefliesShader;
+VertexBufferObject Blade;
+VertexBufferObject FireflyVBO;
+
+
+// FireFly class definition
+
+class FireFly {
+
+private:
+	float    ffMinXZ = -10.f;
+	float    ffMaxXZ = 10.f;
+	float    ffMinY = 1.5f;
+	float    ffMaxY = 10.f;
+public:
+	float glowVariation;
+	float startX;
+	float startZ;
+	float startY;
+	Keytimes ktX;
+	Keytimes ktY;
+	Keytimes ktZ;
+
+	void Initialize() {
+		// generate random values for startX, startZ, and startY
+		startX = ffMinXZ + (float)(rand()) / (RAND_MAX / (ffMaxXZ - ffMinXZ));
+		startZ = ffMinXZ + (float)(rand()) / (RAND_MAX / (ffMaxXZ - ffMinXZ));
+		startY = ffMinY + (float)(rand()) / (RAND_MAX / (ffMaxY - ffMinY));
+
+		float variation = -1.f + 2.f * ((float)(rand()) / RAND_MAX);
+		float glowVariation = (float)(rand()) / (RAND_MAX / 5.f);
+
+		ktX.Init();
+		ktX.AddTimeValue(0.0, startX);
+		ktX.AddTimeValue(10.0, startX + variation);
+		ktX.AddTimeValue(15.0, startX);
+		ktX.AddTimeValue(20.0, startX - variation);
+		ktX.AddTimeValue(25.0, startX);
+		ktX.AddTimeValue(30.0, startX - variation);
+		ktX.AddTimeValue((float)(MS_PER_CYCLE/1000), startX);
+
+
+		ktY.Init();
+		ktY.AddTimeValue(0.0, startY);
+		ktY.AddTimeValue(10.0, startY + variation);
+		ktY.AddTimeValue(15.0, startY);
+		ktY.AddTimeValue(20.0, startY - variation);
+		ktY.AddTimeValue(25.0, startY);
+		ktY.AddTimeValue(30.0, startY + variation);
+		ktY.AddTimeValue((float)(MS_PER_CYCLE / 1000), startY);
+
+		ktZ.Init();
+		ktZ.AddTimeValue(0.0, startZ);
+		ktZ.AddTimeValue(5.0, startZ - variation - 0.2f);
+		ktZ.AddTimeValue(10.0, startZ + variation);
+		ktZ.AddTimeValue(15.0, startZ - variation);
+		ktZ.AddTimeValue(20.0, startZ);
+		ktZ.AddTimeValue(25.0, startZ - variation + 0.2f);
+		ktZ.AddTimeValue(35.0, startZ + variation);
+		ktZ.AddTimeValue((float)(MS_PER_CYCLE / 1000), startZ);
+	};
+};
+
+int     NumFireFlies = 50;
+FireFly fireflies[50];
+
+
+// Fire Particle definition
+struct FireParticle {
+	float x, y, z;
+	float vx, vy, vz;
+	float lifetime;
+};
+
+// this will simulate the flames of the campfire
+class Fire {
+
+private:
+	int maxParticles = 50000;
+	int particleIncrement = 75;
+	int numParticles;
+	const float originX = 0.f;
+	const float originY = 0.3f;
+	const float originZ = 0.f;
+	const float maxRadius = 0.6f;
+	const float minLife = 1.0f;
+	const float maxLife = 6.f;
+	const float maxVXZ = 0.1f;
+	const float minVY = 0.05f;
+	const float maxVY = 0.2f;
+	float deltaTime = 0.025f;
+	bool daytime = false;
+
+	void ResetParticle(FireParticle* particle) {
+		float angle = (float)rand() / RAND_MAX * (2 * M_PI);
+		float radius = (float)rand() / RAND_MAX * maxRadius;
+
+		particle->x = radius * cos(angle);
+		particle->y = originY;
+		particle->z = radius * sin(angle);
+		particle->vx = (float)rand() / RAND_MAX * (maxVXZ * 2) - maxVXZ;
+		particle->vy = (float)rand() / RAND_MAX * minVY + maxVY;
+		particle->vz = (float)rand() / RAND_MAX * (maxVXZ * 2) - maxVXZ;
+		particle->lifetime = (float)(rand()) / RAND_MAX * maxLife + minLife;
+	};
+
+	void InitParticles(int num) {
+		for (int i = 0; i < num; i++)
+		{
+			FireParticle particle;
+			ResetParticle(&particle);
+			flames.push_back(particle);
+		}
+	};
+
+public:
+	std::vector<FireParticle> flames;
+
+	void Init() 
+	{
+		flames.clear();
+		int numParticles = particleIncrement;
+		InitParticles(numParticles);
+	};
+
+	void Switch()
+	{
+		if (daytime)
+		{
+			daytime = false;
+			Init();
+		}
+		else
+		{
+			daytime = true;
+			numParticles = 0;
+		}
+		
+	}
+
+	void Update() 
+	{
+		// if night time, keep incrementing fire particles so fire "grows"
+		if (!daytime && (numParticles < maxParticles)) 
+		{
+			InitParticles(particleIncrement);
+			numParticles += particleIncrement;
+		}
+
+
+		for (auto& particle : flames) 
+		{
+			float distanceFromOrigin = sqrt((particle.x * particle.x)
+											+ (particle.y * particle.y)
+											+ (particle.z * particle.z));
+
+			// update position based on velocity and time multiplier
+			particle.x += particle.vx * deltaTime;
+			particle.y += particle.vy * deltaTime;
+			particle.z += particle.vz * deltaTime;
+
+			particle.lifetime -= deltaTime;
+
+			// at end of lifetime, reset particle if it's night, remove if it's day
+			if (particle.lifetime <= 0) 
+			{
+				if (!daytime)
+					ResetParticle(&particle);
+			}
+		}
+
+		if (daytime)
+		{ // a little bit hard to read, this removes particles that reach their lifetime during the day
+			//see: https://stackoverflow.com/questions/4713131/removing-item-from-vector-while-iterating 
+			flames.erase(std::remove_if(flames.begin(), flames.end(),
+				[](const FireParticle& particle) { return particle.lifetime <= 0.0f; }),
+				flames.end());
+		}
+
+	};
+
+	void Draw()
+	{
+
+		for (const auto& particle : flames) {
+
+			float distanceFromOrigin = sqrt((particle.x * particle.x) 
+											+ (particle.y * particle.y) 
+											+ (particle.z * particle.z));
+
+			// set a warm light pointing down at the campfire to simulate the fire's glow
+			// might need to rework this
+			glEnable(GL_LIGHT1);
+			GLfloat lightPosition[] = { 0.0f, 1.0f, 0.0f, 1.0f };
+			GLfloat lightColor[] = { 1.0f, 0.8f, 0.2f, 1.0f };
+			glLightfv(GL_LIGHT1, GL_POSITION, lightPosition);
+			glLightfv(GL_LIGHT1, GL_DIFFUSE, lightColor);
+			glDisable(GL_LIGHTING);
+
+			glPushMatrix();
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+			glColor4f(1.0f, (1.7f - distanceFromOrigin), 0.0f, 0.2f);
+			glTranslatef(particle.x, particle.y, particle.z);
+			glScalef(0.2, 0.2, 0.2);
+			FireflyVBO.DrawInstanced(1);
+			glPopMatrix();
+
+
+		}
+
+		glEnable(GL_LIGHTING);
+	};
+};
+
+Fire CampFireFlames;
+bool fireOn = true;
 
 // main program:
 
 int
 main( int argc, char *argv[ ] )
 {
+	// seed random generator
+	srand(time(0));
+
 	// turn on the glut package:
 	// (do this before checking argc and argv since glutInit might
 	// pull some command line arguments out)
@@ -399,14 +667,21 @@ Display( )
 	glMatrixMode( GL_MODELVIEW );
 	glLoadIdentity( );
 
-	// set the eye position, look-at position, and up-vector:
 
-	gluLookAt( 0.f, 0.f, 3.f,     0.f, 0.f, 0.f,     0.f, 1.f, 0.f );
+	// set the eye position, look-at position, and up-vector:
+	if (ViewToggle)
+		gluLookAt(-4.f, 0.3f, -4.f, 
+				  10.f, 10.f, 10.f, 
+				  0.f, 1.f, 0.f);
+	else
+		gluLookAt(eyeX, eyeY, eyeZ, 
+			      0.f, 0.f, 0.f, 
+			      0.f, 1.f, 0.f);
+
 
 	// rotate the scene:
-
-	glRotatef( (GLfloat)Yrot, 0.f, 1.f, 0.f );
-	glRotatef( (GLfloat)Xrot, 1.f, 0.f, 0.f );
+	glRotatef((GLfloat)Yrot, 0.f, 1.f, 0.f);
+	glRotatef((GLfloat)Xrot, 1.f, 0.f, 0.f);
 
 	// uniformly scale the scene:
 
@@ -439,20 +714,230 @@ Display( )
 	}
 
 	// since we are using glScalef( ), be sure the normals get unitized:
-
 	glEnable( GL_NORMALIZE );
 
+	if (Frozen)
+		return;
 
-	// draw the box object by calling up its display list:
+	// ----------------------------------------- display top ------------------------ //
 
-	glCallList( BoxList );
+	float RADIUS = 3.f;
+	float angle = 2.0 * F_PI * Time + (RADIUS * F_PI);
+
+	float lightZ = 0.f;
+	float lightX = 15.f * cos(angle); 
+	float lightY = 15.f * sin(angle);
+
+	// lighting
+	
+	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHTING);
+
+
+	SetSpotLight(GL_LIGHT0, lightX, lightY, lightZ, -lightX, -lightY, -lightZ, 1., 1., 1.);
+
+	GLfloat ambient[] = { .1f, .1f, .1f, .1f };
+	glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+
+	GLfloat diffuse[] = { 0.8f, 0.8f, 0.8f, 1.0f };
+	glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
+
+	GLfloat specular[] = { 0.1, 0.1, 0.1, 1.0 };
+	glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
+
+	glEnable(GL_TEXTURE_2D); // -- texture issue, moved this here from down below sky sphere
+
+	// Objs:
+
+	//if (textureTesting) {
+	Pattern.Use();
+
+	// large sky sphere & ground
+	glPushMatrix();
+
+	// bind two separate textures to two separate TUNs
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, DaySkyTex);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, NightSkyTex);
+	Pattern.SetUniformVariable("uTexUnit0", 1);
+	Pattern.SetUniformVariable("uTexUnit1", 2);
+
+	glRotatef(360.f * Time, 0., 0., 1.);
+	glRotatef(90, 1.f, 0.f, 0.f);
+	glScalef(15., 15., 15.);
+	glCallList( SphereDL );
+
+	glPopMatrix();
+
+	Pattern.UnUse();
+	//}
+	
+	//glEnable(GL_TEXTURE_2D); // --texture issue, moved this from here to up above sky sphere
+	glActiveTexture(GL_TEXTURE0); // -- texture issue, added this here
+
+	// ground
+	glPushMatrix();
+	glBindTexture(GL_TEXTURE_2D, TextureIDs[DIRT]);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	// darken underneath so it's less reflective
+	SetMaterial(0.2, 0.14, 0.07, 0.f);
+	glCallList(GridDL);
+	glPopMatrix();
+
+
+	// tree texture
+	glBindTexture(GL_TEXTURE_2D, TextureIDs[PINETREE]);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	// trees
+	int treeRadius = 14.f;
+	int numTrees = 40;
+
+	for (int i = 0; i < 5; i++) {
+		numTrees -= i;
+		treeRadius -= (i * 0.5f);
+
+		for (int x = 0; x < numTrees; x++) {
+			float angle = 2.0 * F_PI * x / numTrees;
+
+			float treeZ = (treeRadius + (x % 2)) * cos(angle);
+			float treeX = (treeRadius + (x % 2)) * sin(angle);
+			float treeY;
+
+			if (x % 2 == 0) {
+				treeY = 0.0f;
+			}
+
+			else
+				treeY = -0.4f;
+
+			if (i % 2 == 0) {
+				treeX -= 0.2f;
+				treeZ -= 0.2f;
+			}
+
+			glPushMatrix();
+
+			glTranslatef(treeX, treeY, treeZ);
+			glCallList(PineTreeDL);
+
+			glPopMatrix();
+		}
+	}
+
+	// campfire
+	glPushMatrix();
+
+	glBindTexture(GL_TEXTURE_2D, TextureIDs[CAMPFIRE]);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	glCallList(CampFireDL);
+
+	glPopMatrix();
+
+	// tent
+	glPushMatrix();
+
+	glBindTexture(GL_TEXTURE_2D, TextureIDs[TENT]);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+	glTranslatef(0.f, 0.f, 5.f);
+	glCallList(TentDL);
+
+	glPopMatrix();
+
+	// moon
+	glPushMatrix();
+	SetMaterial(1., 1., 1., 1.);
+	glTranslatef((-15.f * cos(angle)), (-15.f * sin(angle)), 0.f);
+
+	glBindTexture(GL_TEXTURE_2D, TextureIDs[MOON]);
+	glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+	//glScalef(0.5, 0.5, 0.5);
+	glCallList(SphereDL);
+	glPopMatrix();
+
+	glDisable(GL_TEXTURE_2D);
+
+	// "fire flies"
+
+	// # msec into the cycle ( 0 - MSEC-1 ):
+	int msec = glutGet(GLUT_ELAPSED_TIME) % MS_PER_CYCLE;
+	// turn that into a time in seconds:
+	float nowSecs = (float)msec / 1000.f;
+
+	// show the fireflies and turn fire on if it's nighttime
+	if ((-15.f * sin(angle)) > -5.f)
+	{
+		if (!fireOn)
+		{
+			CampFireFlames.Switch();
+			fireOn = true;
+		}
+
+		float minXZ = 0.f;
+		float maxXZ = 10.f;
+		float minY = 1.5f;
+		float maxY = 10.f;
+
+		for (int i = 0; i < NumFireFlies; i++)
+		{
+			float x = fireflies[i].ktX.GetValue(nowSecs);
+			float y = fireflies[i].ktY.GetValue(nowSecs);
+			float z = fireflies[i].ktZ.GetValue(nowSecs);
+
+			// draw fireflies
+			glPushMatrix();
+			FirefliesShader.Use();
+			FirefliesShader.SetUniformVariable("uTime", Time);
+			FirefliesShader.SetUniformVariable("ffGlowVariation", fireflies[i].glowVariation);
+			glTranslatef(x, y, z);
+			FireflyVBO.DrawInstanced(1);
+			FirefliesShader.UnUse();
+			glPopMatrix();
+
+		}
+		
+	}
+	else if (fireOn)
+	{
+		CampFireFlames.Switch();
+		fireOn = false;
+	}
+
+	// turn fire "off" if it's day time
+	// fire ? testing here
+	CampFireFlames.Draw();
+	CampFireFlames.Update();
+	
+
+
+	// grass, turn on the shader and set the time:
+	glPushMatrix();
+	Grass.Use();
+	Grass.SetUniformVariable("uTime", Time);
+    Blade.DrawInstanced(UNUMXZ * UNUMXZ);
+	Grass.UnUse();
+	glPopMatrix();
+
+
+	glDisable(GL_LIGHTING);
+	// sun
+	glPushMatrix();
+	
+	glColor3f(1.f, 1.f, 0.31f);
+	glTranslatef((15.f * cos(angle)), (15.f * sin(angle)), 0.f);
+	glScalef(0.8, 0.8, 0.8);
+	glCallList(SphereDL);
+	glPopMatrix();
+	
 
 #ifdef DEMO_Z_FIGHTING
 	if( DepthFightingOn != 0 )
 	{
 		glPushMatrix( );
 			glRotatef( 90.f,   0.f, 1.f, 0.f );
-			glCallList( BoxList );
+			glCallList( SphereDL);
 		glPopMatrix( );
 	}
 #endif
@@ -710,7 +1195,22 @@ InitMenus( )
 	glutAttachMenu( GLUT_RIGHT_BUTTON );
 }
 
+// bind a texture file to a texure ID
+void CreateGlobalTextureID(GLuint& textureID, char* filename) 
+{
+	int width, height;
+	unsigned char* textureArray0 = BmpToTexture(filename, &width, &height);
 
+	fprintf(stderr, "Texture %s created, width/height: %d/%d\n", filename, width, height);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glGenTextures(1, &textureID);
+	glBindTexture(GL_TEXTURE_2D, textureID);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, 3, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, textureArray0);
+}
 
 // initialize the glut and OpenGL libraries:
 //	also setup callback functions
@@ -729,7 +1229,7 @@ InitGraphics( )
 	// set the initial window configuration:
 
 	glutInitWindowPosition( 0, 0 );
-	glutInitWindowSize( INIT_WINDOW_SIZE, INIT_WINDOW_SIZE );
+	glutInitWindowSize( INIT_WINDOW_SIZE + 200, INIT_WINDOW_SIZE );
 
 	// open the window and set its title:
 
@@ -804,7 +1304,140 @@ InitGraphics( )
 
 	// all other setups go here, such as GLSLProgram and KeyTime setups:
 
+	for (int x = 0; x < NumTextureIDs; x++)
+	{
+		CreateGlobalTextureID(TextureIDs[x], TextureFiles[x]);
+	}
+
+	// -------- shader textures ----------//
+
+	// bind day sky texture
+	glGenTextures(1, &DaySkyTex);
+	int nums, numt;
+	Texture = BmpToTexture("daySkyTexture.bmp", &nums, &numt);
+	glBindTexture(GL_TEXTURE_2D, DaySkyTex);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, 3, nums, numt, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture);
+
+	// bind night sky texture
+	glGenTextures(1, &NightSkyTex);
+	Texture = BmpToTexture("nightSkyTexture.bmp", &nums, &numt);
+	glBindTexture(GL_TEXTURE_2D, NightSkyTex);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexImage2D(GL_TEXTURE_2D, 0, 3, nums, numt, 0, GL_RGB, GL_UNSIGNED_BYTE, Texture);
+
+
+	//------------------- shader files ------------------ //
+
+	// -- this is for the sky/environment sphere, I didn't change the original file name from the tutorial...
+	// -- TODO: fix the naming here
+	Pattern.Init();
+	bool valid = Pattern.Create("pattern.vert", "pattern.frag");
+	if (!valid) {
+		fprintf(stderr, "Something went wrong with loading pattern.vert or pattern.frag\n");
+	}
+	else {
+		Pattern.SetUniformVariable("uKa", 0.4f);
+		Pattern.SetUniformVariable("uKd", 0.2f);
+		Pattern.SetUniformVariable("uKs", 0.2f);
+		Pattern.SetUniformVariable("uSpecularColor", 1.f, 1.f, 1.f);
+		Pattern.SetUniformVariable("uShininess", (1.f));
+	}
+
+	// grass shader
+	Grass.Init();
+	valid = Grass.Create("grass.vert", "grass.frag");
+	if (!valid)
+		fprintf(stderr, "Shader cannot be created!\n");
+	else {
+		fprintf(stderr, "Shader created.\n");
+
+		Grass.SetVerbose(false);
+		Grass.SetUniformVariable("uNumx", UNUMXZ);
+		Grass.SetUniformVariable("uNumz", UNUMXZ);
+		Grass.SetUniformVariable("uXmin", -15.f);
+		Grass.SetUniformVariable("uXmax", 15.f);
+		Grass.SetUniformVariable("uZmin", -15.f);
+		Grass.SetUniformVariable("uZmax", 15.f);
+		Grass.SetUniformVariable("uPeriodx", 30.f);
+		Grass.SetUniformVariable("uPeriodz", 30.f);
+		Grass.SetUniformVariable("centerRadius", 6.f);
+	}
+
+
+	// single blade of grass VBO 
+
+	int NUMPOINTS = 10;
+	float YMIN = 0.f;
+	float YMAX = 0.2f;
+
+	Blade.Init();
+	Blade.glBegin(GL_LINE_STRIP);
+	for (int i = 0; i < NUMPOINTS; i++)
+	{
+		float y = YMIN + (float)i * (YMAX - YMIN) / (float)(NUMPOINTS - 1);
+		Blade.glVertex3f(0., y, 0.);
+	}
+	Blade.glEnd();
+
+
+	//  fireflies shader
+
+	FirefliesShader.Init();
+	valid = FirefliesShader.Create("fireflies.vert", "fireflies.frag");
+	if (!valid)
+		fprintf(stderr, "Shader cannot be created!\n");
+	else {
+		fprintf(stderr, "Shader created.\n");
+
+		FirefliesShader.SetVerbose(false);
+		FirefliesShader.SetUniformVariable("uKa", 0.2f);
+		FirefliesShader.SetUniformVariable("uKd", 0.4f);
+		FirefliesShader.SetUniformVariable("uKs", 0.4f);
+		FirefliesShader.SetUniformVariable("uSpecularColor", 1.f, 1.f, 1.f);
+		FirefliesShader.SetUniformVariable("uShininess", (1.f));
+	}
+
+
+	//  single firefly 
+	FireflyVBO.Init();
+	OsuSphereVBO(0.05f, 40, 40, &FireflyVBO);
+	FireflyVBO.glEnd();
+
+
+	// ------------- Firefly initial position set-up ---------------//
+	for (int i = 0; i < NumFireFlies; i++)
+	{
+		fireflies[i].Initialize();
+	}
+
+	//initialize the fire
+	CampFireFlames.Init();
 }
+
+
+
+
+// ------- grid variables
+#define XSIDE	30	// length of the x side of the grid
+#define X0   (-XSIDE/2.)		// where one side starts
+#define NX	500		// how many points in x
+#define DX	( XSIDE/(float)NX )	// change in x between the points
+
+#define YGRID	0.f
+
+#define ZSIDE	30			// length of the z side of the grid
+#define Z0      (-ZSIDE/2.)		// where one side starts
+#define NZ	500			// how many points in z
+#define DZ	( ZSIDE/(float)NZ )	// change in z between the points
+
+
 
 
 // initialize the display lists that will not change:
@@ -823,58 +1456,51 @@ InitLists( )
 	float dz = BOXSIZE / 2.f;
 	glutSetWindow( MainWindow );
 
-	// create the object:
+	// create the sphere:
 
-	BoxList = glGenLists( 1 );
-	glNewList( BoxList, GL_COMPILE );
-
-		glBegin( GL_QUADS );
-
-			glColor3f( 1., 0., 0. );
-
-				glNormal3f( 1., 0., 0. );
-					glVertex3f(  dx, -dy,  dz );
-					glVertex3f(  dx, -dy, -dz );
-					glVertex3f(  dx,  dy, -dz );
-					glVertex3f(  dx,  dy,  dz );
-
-				glNormal3f(-1., 0., 0.);
-					glVertex3f( -dx, -dy,  dz);
-					glVertex3f( -dx,  dy,  dz );
-					glVertex3f( -dx,  dy, -dz );
-					glVertex3f( -dx, -dy, -dz );
-
-			glColor3f( 0., 1., 0. );
-
-				glNormal3f(0., 1., 0.);
-					glVertex3f( -dx,  dy,  dz );
-					glVertex3f(  dx,  dy,  dz );
-					glVertex3f(  dx,  dy, -dz );
-					glVertex3f( -dx,  dy, -dz );
-
-				glNormal3f(0., -1., 0.);
-					glVertex3f( -dx, -dy,  dz);
-					glVertex3f( -dx, -dy, -dz );
-					glVertex3f(  dx, -dy, -dz );
-					glVertex3f(  dx, -dy,  dz );
-
-			glColor3f(0., 0., 1.);
-
-				glNormal3f(0., 0., 1.);
-					glVertex3f(-dx, -dy, dz);
-					glVertex3f( dx, -dy, dz);
-					glVertex3f( dx,  dy, dz);
-					glVertex3f(-dx,  dy, dz);
-
-				glNormal3f(0., 0., -1.);
-					glVertex3f(-dx, -dy, -dz);
-					glVertex3f(-dx,  dy, -dz);
-					glVertex3f( dx,  dy, -dz);
-					glVertex3f( dx, -dy, -dz);
-
-		glEnd( );
-
+    SphereDL = glGenLists( 1 );
+	glNewList( SphereDL, GL_COMPILE );
+		OsuSphere(1., 300, 300);
 	glEndList( );
+
+	// ------- grid floor ---------- //
+
+	GridDL = glGenLists(1);
+	glNewList(GridDL, GL_COMPILE);
+	SetMaterial(1.f, 1.f, 1.f, 1.f);
+	glNormal3f(0., 1., 0.);
+	for (int i = 0; i < NZ; i++)
+	{
+		glBegin(GL_QUAD_STRIP);
+		for (int j = 0; j < NX; j++)
+		{
+			glTexCoord2f((float)j / (float)NX, (float)i / (float)NZ);
+			glVertex3f(X0 + DX * (float)j, YGRID, Z0 + DZ * (float)(i + 0));
+
+			glTexCoord2f((float)j / (float)NX, (float)(i + 1) / (float)NZ);
+			glVertex3f(X0 + DX * (float)j, YGRID, Z0 + DZ * (float)(i + 1));
+		}
+		glEnd();
+	}
+	glEndList();
+
+	// pine tree
+	PineTreeDL = glGenLists(1);
+	glNewList(PineTreeDL, GL_COMPILE);
+	LoadObjFile((char*)"pineTree.obj");
+	glEndList();
+
+	// camp fire
+	CampFireDL = glGenLists(1);
+	glNewList(CampFireDL, GL_COMPILE);
+	LoadObjFile((char*)"campFire.obj");
+	glEndList();
+
+	// tent
+	TentDL = glGenLists(1);
+	glNewList(TentDL, GL_COMPILE);
+	LoadObjFile((char*)"tent.obj");
+	glEndList();
 
 
 	// create the axes:
@@ -898,6 +1524,49 @@ Keyboard( unsigned char c, int x, int y )
 
 	switch( c )
 	{
+		case 'a':
+		case 'A':
+			eyeX -= eyeD;
+			break;
+		case 'd':
+		case 'D':
+			eyeX += eyeD;
+			break;
+		case 'w':
+		case 'W':
+			eyeZ -= eyeD;
+			break;
+		case 's':
+		case 'S':
+			eyeZ += eyeD;
+			break;
+
+		case 'f':
+		case 'F':
+			Frozen = !Frozen;
+			if (Frozen)
+				glutIdleFunc(NULL);
+			else
+				glutIdleFunc(Animate);
+			break;
+
+		case 'v':
+		case 'V':
+			Xrot = 0;
+			Yrot = 0;
+			Scale = 1;
+			ViewToggle = !ViewToggle;
+			break;
+
+		case 'q':
+		case 'Q':
+			eyeY -= eyeD;
+			break;
+		case 'e':
+		case 'E':
+			eyeY += eyeD;
+			break;
+
 		case 'o':
 		case 'O':
 			NowProjection = ORTHO;
@@ -908,8 +1577,11 @@ Keyboard( unsigned char c, int x, int y )
 			NowProjection = PERSP;
 			break;
 
-		case 'q':
-		case 'Q':
+		case 't':
+		case 'T':
+			textureTesting = !textureTesting;
+			break;
+
 		case ESCAPE:
 			DoMainMenu( QUIT );	// will not return here
 			break;				// happy compiler

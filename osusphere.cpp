@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <ctype.h>
+#include "vertexbufferobject.cpp"
 
 #include <GL/gl.h>
 
@@ -34,7 +35,7 @@ _DrawSphLatLng( float radius, float lat, float lng )
 
 
 void
-OsuSphere( float radius, int slices, int stacks )
+OsuSphere( float radius, int slices, int stacks)
 {
 	// sanity check:
 	radius = (float)fabs(radius);
@@ -97,4 +98,101 @@ OsuSphere( float radius, int slices, int stacks )
 	}
 
 	glEnd( );
+}
+
+
+
+// -------------- draw sphere via VBO ------------//
+
+inline
+void
+_DrawSphLatLngVBO(float radius, float lat, float lng, VertexBufferObject* vbo)
+{
+	// lat is in radians between -F_PI_2 and +F_PI_2
+	// lng is in radians between -F_PI and +F_PI
+	float xz = cosf(lat);
+	float x = xz * sinf(lng);
+	float y = sinf(lat);
+	float z = xz * cosf(lng);
+	float nx = x;		// for a *sphere only*, the normal is the unitized position
+	float ny = y;		// for a *sphere only*, the normal is the unitized position
+	float nz = z;		// for a *sphere only*, the normal is the unitized position
+	float s = (lng + F_PI) / F_2_PI;
+	float t = (lat + F_PI_2) / F_PI;
+	vbo->glTexCoord2f(s, t);
+	vbo->glNormal3f(nx, ny, nz);
+	vbo->glVertex3f(x * radius, y * radius, z * radius);
+}
+
+
+void
+OsuSphereVBO(float radius, int slices, int stacks, VertexBufferObject* vbo)
+{
+	// sanity check:
+	radius = (float)fabs(radius);
+	if (slices < 4)		slices = 4;
+	if (stacks < 4)		stacks = 4;
+
+
+	if (vbo == nullptr) {
+		fprintf(stderr, "\nVBO is null, cannot draw initial sphere!");
+		return;
+	}
+	
+		
+	vbo->glBegin(GL_TRIANGLES);
+
+	// south pole:
+	{
+		int istack = 0;
+		float north = -F_PI_2 + F_PI * (float)(istack + 1) / (float)stacks;
+		float south = -F_PI_2 + F_PI * (float)(istack + 0) / (float)stacks;
+		for (int islice = 0; islice < slices; islice++)
+		{
+			float west = -F_PI + F_2_PI * (float)(islice + 0) / (float)slices;
+			float east = -F_PI + F_2_PI * (float)(islice + 1) / (float)slices;
+
+			_DrawSphLatLngVBO(radius, south, .5f * (east + west), vbo);
+			_DrawSphLatLngVBO(radius, north, east, vbo);
+			_DrawSphLatLngVBO(radius, north, west, vbo);
+		}
+	}
+
+	// north pole:
+	{
+		int istack = stacks - 1;
+		float north = -F_PI_2 + F_PI * (float)(istack + 1) / (float)stacks;
+		float south = -F_PI_2 + F_PI * (float)(istack + 0) / (float)stacks;
+		for (int islice = 0; islice < slices; islice++)
+		{
+			float west = -F_PI + F_2_PI * (float)(islice + 0) / (float)slices;
+			float east = -F_PI + F_2_PI * (float)(islice + 1) / (float)slices;
+
+			_DrawSphLatLngVBO(radius, north, .5f * (east + west), vbo);
+			_DrawSphLatLngVBO(radius, south, west, vbo);
+			_DrawSphLatLngVBO(radius, south, east, vbo);
+		}
+	}
+
+	// all the bands in between:
+	for (int istack = 1; istack < stacks - 1; istack++)
+	{
+		float north = -F_PI_2 + F_PI * (float)(istack + 1) / (float)stacks;
+		float south = -F_PI_2 + F_PI * (float)(istack + 0) / (float)stacks;
+		for (int islice = 0; islice < slices; islice++)
+		{
+			float west = -F_PI + F_2_PI * (float)(islice + 0) / (float)slices;
+			float east = -F_PI + F_2_PI * (float)(islice + 1) / (float)slices;
+
+			_DrawSphLatLngVBO(radius, north, west, vbo);
+			_DrawSphLatLngVBO(radius, south, west, vbo);
+			_DrawSphLatLngVBO(radius, north, east, vbo);
+
+			_DrawSphLatLngVBO(radius, north, east, vbo);
+			_DrawSphLatLngVBO(radius, south, west, vbo);
+			_DrawSphLatLngVBO(radius, south, east, vbo);
+		}
+	}
+
+	vbo->glEnd();
 }
